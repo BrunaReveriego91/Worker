@@ -1,0 +1,2 @@
+Consulta API realizada:18/04/2022 12:18:31
+Time elapsed:19181ms

@@ -1,4 +1,5 @@
 using System.Text;
+using TesteWiProWorker.Model;
 using System.Net.Http;
 using System.Globalization;
 using CsvHelper;
@@ -10,30 +11,42 @@ namespace TesteWiProWorker
         static HttpClient client = new HttpClient();
         public async void GetItemQueue()
         {
-            StringBuilder sb = new StringBuilder();
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var path = @"log.txt";
+            using (System.IO.StreamWriter file = new System.IO.StreamWriter(path))
+            {
+                StringBuilder sb = new StringBuilder();
 
-            sb.Append("Consulta API realizada:");
-            sb.Append(DateTime.Now.ToString());
+                sb.Append("Consulta API realizada:");
+                sb.Append(DateTime.Now.ToString() + "\r\n");
 
-            HttpClientHandler clientHandler = new HttpClientHandler();
-            clientHandler.ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => { return true; };
+                HttpClientHandler clientHandler = new HttpClientHandler();
+                clientHandler.ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => { return true; };
 
-            var response = client.GetAsync("http://localhost:5228/api/GetItemFila").Result;
-            var contents = await response.Content.ReadAsStringAsync();
+                var response = client.GetAsync("http://localhost:5228/api/GetItemFila").Result;
+                var contents = await response.Content.ReadAsStringAsync();
 
-            if (contents == "\"Não há objetos a serem retornados\"")
-                return;
+                if (contents == "\"Não há objetos a serem retornados\"")
+                    return;
 
-            var resultAllCoins = GetCoinArchive(ListCoinValue(contents));
+                var resultAllCoins = GetCoinArchive(ListCoinValue(contents));
 
-            GenerateQuoteFile(resultAllCoins);
+                GenerateQuoteFile(resultAllCoins);
+                watch.Stop();
+                sb.Append("Time elapsed:");
+                sb.Append(watch.ElapsedMilliseconds.ToString() + "ms");
 
-            File.AppendAllText(AppDomain.CurrentDomain.BaseDirectory + "log.txt", sb.ToString());
-            sb.Clear();
+                if (!File.Exists(path))
+                    file.Write(sb.ToString());
+                else
+                    File.WriteAllText(path, sb.ToString());
+
+                sb.Clear();
+            }
 
         }
 
-        public List<string> ListCoinValue(string value)
+        private List<CoinModel> ListCoinValue(string value)
         {
             string[] coinList = value.Split(",");
             List<string> coinListResult = new List<string>();
@@ -44,59 +57,93 @@ namespace TesteWiProWorker
                 coinListResult.Add(valueList[1].Trim(new char[] { '"', '}' }));
             }
 
-            return coinListResult;
+            return ConvertCSVCoinToModel(coinListResult);
         }
 
-        public List<string> GetCoinArchive(List<string> coin)
+        private List<CoinQuotaModel> GetCoinArchive(List<CoinModel> coin)
         {
 
-            List<string> coins = new List<string>();
+            List<CoinQuotaModel> coinList = new List<CoinQuotaModel>();
 
             string[] csvlines = File.ReadAllLines(@"Files/DadosMoeda.csv");
             csvlines = csvlines.Skip(1).ToArray();
 
             foreach (string item in csvlines)
             {
-
                 string[] itemValue = item.Split(";");
-                if ((Convert.ToDateTime(itemValue[1]) >= Convert.ToDateTime(coin[1])) && Convert.ToDateTime(itemValue[1]) <= Convert.ToDateTime(coin[2]))
-                    coins.Add(item);
+                if ((Convert.ToDateTime(itemValue[1]) >= Convert.ToDateTime(coin[0].DateStart)) && (Convert.ToDateTime(itemValue[1]) <= Convert.ToDateTime(coin[0].DateEnd)))
+                    coinList.Add(
+                        new CoinQuotaModel
+                        {
+                            Coin = itemValue[0],
+                            Date = itemValue[1]
+                        }
+                    );
 
             }
-
-            return coins;
-
+            return coinList;
         }
 
-        public void GenerateQuoteFile(List<string> allcoins)
+        private List<CoinModel> ConvertCSVCoinToModel(List<string> coinValue)
+        {
+            List<CoinModel> listCoins = new List<CoinModel>();
+            listCoins.Add(new CoinModel
+            {
+                Coin = coinValue[0],
+                DateStart = coinValue[1],
+                DateEnd = coinValue[2]
+
+            });
+            return listCoins;
+        }
+
+        private List<QuotaModel> ConvertCSVQuotaToModel(string[] quotaValue)
+        {
+            List<QuotaModel> listQuota = new List<QuotaModel>();
+
+            foreach (string quota in quotaValue)
+            {
+                string[] splitedQuota = quota.Split(";");
+
+                listQuota.Add(new QuotaModel
+                {
+                    Value = splitedQuota[0],
+                    Code = splitedQuota[1],
+                    Date = splitedQuota[2]
+                });
+            }
+
+            return listQuota;
+        }
+
+        private void GenerateQuoteFile(List<CoinQuotaModel> coinList)
         {
             var file = @"Resultado_" + DateTime.Now.Year + DateTime.Now.Month + DateTime.Now.Day + "_" + DateTime.Now.Hour + DateTime.Now.Minute + DateTime.Now.Second + ".csv";
-            string delimiter = ", ";
+            string delimiter = ";";
 
             string[] csvlines = File.ReadAllLines(@"Files/DadosCotacao.csv");
             csvlines = csvlines.Skip(1).ToArray();
+
+            List<QuotaModel> quotaList = ConvertCSVQuotaToModel(csvlines);
+
             using (StreamWriter writer = new StreamWriter(file))
             {
-                foreach (string itemCoin in allcoins)
+                 StringBuilder sb = new StringBuilder();
+
+                foreach (var coin in coinList)
                 {
-                    foreach (string item in csvlines)
-                    {
-                        string[] splitedItem = item.Split(";");
+                    int codQuote = (int)System.Enum.Parse(typeof(QuoteEnum), coin.Coin);
 
-                        string[] splitedCoin = itemCoin.Split(";");
-                        int codQuote = (int)System.Enum.Parse(typeof(QuoteEnum), splitedCoin[0]);
-
-                        if (splitedItem[1] == codQuote.ToString() && Convert.ToDateTime(splitedItem[2]) == Convert.ToDateTime(splitedCoin[1]))
-                        {
-                            string[] splitedItemFinal = splitedItem[0].Split(',');
-                            string createText = splitedCoin[0] + delimiter + splitedCoin[1] + delimiter + splitedItemFinal[1] + "\r\n";
-                            writer.Write(createText);
-                        }
-
-                    }
+                    quotaList
+                    .Where(
+                        x => (x.Code == codQuote.ToString())
+                    )
+                    .Where(
+                        x => Convert.ToDateTime(x.Date) == Convert.ToDateTime(coin.Date)
+                    ).ToList().ForEach(x => sb.AppendLine(coin.Coin + delimiter + coin.Date + delimiter + x.Value + "\r\n"));
                 }
+                File.WriteAllText(file,sb.ToString());
             }
         }
-
     }
 }

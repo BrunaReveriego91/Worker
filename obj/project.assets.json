@@ -1347,7 +1347,7 @@
     ]
   },
   "packageFolders": {
-    "/root/.nuget/packages/": {}
+    "/home/brugabi/.nuget/packages/": {}
   },
   "project": {
     "version": "1.0.0",
@@ -1355,11 +1355,11 @@
       "projectUniqueName": "/home/brugabi/Projetos/TesteWiProWorker/TesteWiProWorker.csproj",
       "projectName": "TesteWiProWorker",
       "projectPath": "/home/brugabi/Projetos/TesteWiProWorker/TesteWiProWorker.csproj",
-      "packagesPath": "/root/.nuget/packages/",
+      "packagesPath": "/home/brugabi/.nuget/packages/",
       "outputPath": "/home/brugabi/Projetos/TesteWiProWorker/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "/root/.nuget/NuGet/NuGet.Config"
+        "/home/brugabi/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net6.0"
